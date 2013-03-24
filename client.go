@@ -19,6 +19,8 @@ type ircClient struct {
 
 	// send a 'true' down this strem to quit (use Disconnect)
 	quitStream chan bool
+
+	outputStream chan<- string
 }
 
 func NewIrcClient() *ircClient {
@@ -50,8 +52,10 @@ func (client *ircClient) Connect(server string, output chan<- string) error {
 	}
 	client.connection = connection
 
+	client.outputStream = output
+
 	client.quitStream = make(chan bool)
-	go client.read(output, client.quitStream)
+	go client.read()
 
 	return nil
 }
@@ -68,6 +72,10 @@ func (client *ircClient) Disconnect() {
 
 	client.quitStream <- true
 	client.quitStream = nil
+}
+
+func (client *ircClient) Connected() bool {
+	return client.connected
 }
 
 // sendsnthe 'NICK' command to the server
@@ -103,7 +111,13 @@ func (client *ircClient) User(user string, hostname string, servername string, r
 	sendStr := fmt.Sprintf("USER %s %s %s :%s", user, hostname, servername, realname)
 	client.send(sendStr)
 
+	client.user = user
+
 	return nil
+}
+
+func (client *ircClient) ParseInput(input string) {
+	client.outputStream <- input
 }
 
 // sends a fully formatted message to the server
@@ -116,19 +130,19 @@ func (client *ircClient) send(message string) {
 // message a string channel to write any received messages into
 // quit a bool channel that will signal this goroutine to halt when true is sent
 // returns an error when we fail to read
-func (client *ircClient) read(message chan<- string, quit chan bool) error {
+func (client *ircClient) read() error {
 	reader := bufio.NewReader(client.connection)
 	readChan := make(chan string)
 
-	go func(quit chan<- bool) {
+	go func() {
 		for {
 			msgStr, err := reader.ReadString('\n')
 			if err != nil {
 				if err != io.EOF {
-					quit <- true
+					client.quitStream <- true
 				} else {
 					println("err == io.EOF")
-					quit <- true
+					client.quitStream <- true
 				}
 				println("error: ", err)
 				println("recv> ", msgStr)
@@ -136,14 +150,14 @@ func (client *ircClient) read(message chan<- string, quit chan bool) error {
 			}
 			readChan <- msgStr
 		}
-	}(quit)
+	}()
 
 	for {
 		select {
 		case msgStr := <-readChan:
-			message <- msgStr
+			client.outputStream <- msgStr
 
-		case shouldQuit := <-quit:
+		case shouldQuit := <-client.quitStream:
 			if shouldQuit {
 				println("quitting")
 				break
@@ -152,4 +166,8 @@ func (client *ircClient) read(message chan<- string, quit chan bool) error {
 	}
 
 	return nil
+}
+
+func (cient *ircClient) parseServerString(serverString string) {
+
 }
