@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 )
 
 // a client to an irc server
@@ -155,7 +156,7 @@ func (client *ircClient) read() error {
 	for {
 		select {
 		case msgStr := <-readChan:
-			client.outputStream <- msgStr
+			client.parseServerString(msgStr)
 
 		case shouldQuit := <-client.quitStream:
 			if shouldQuit {
@@ -168,6 +169,10 @@ func (client *ircClient) read() error {
 	return nil
 }
 
-func (cient *ircClient) parseServerString(serverString string) {
-
+func (client *ircClient) parseServerString(serverString string) {
+	if strings.HasPrefix(serverString, "PING") {
+		// pong
+	} else {
+		client.outputStream <- serverString
+	}
 }
